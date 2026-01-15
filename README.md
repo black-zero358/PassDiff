@@ -1,73 +1,53 @@
-# React + TypeScript + Vite
+# 🔐 PassDiff
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+本地密码文档对比与优化工具。纯客户端运行，数据零上传。
 
-Currently, two official plugins are available:
+## 功能
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+### 对比模式
+上传两个密码 CSV 文件，识别差异：
+- **相同** - 两边一致的条目
+- **修改** - 同账户密码不同
+- **仅A/仅B** - 单边独有的条目
 
-## React Compiler
+### 合并模式
+上传单个 CSV 文件，识别可去重条目：
+- 自动发现同域名同密码的重复项
+- 支持三种合并策略：根域名 / 保留第一个 / 手动选择
+- 单项选择，精确控制合并范围
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## 支持格式
 
-## Expanding the ESLint configuration
+| 来源 | 格式 |
+|------|------|
+| Chrome | `name, url, username, password, note` |
+| BitWarden | `login_uri, login_username, login_password, ...` |
 
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
+## 技术栈
 
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
+- React 19 + TypeScript + Vite
+- PapaParse (CSV 解析)
+- 纯 CSS 设计系统
 
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
+## 运行
 
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```bash
+# 安装依赖
+npm install
+
+# 开发模式
+npm run dev
+
+# 生产构建
+npm run build
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## 设计原则
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+- **简约** - 极简界面，聚焦核心功能
+- **克制** - 无多余依赖，无复杂配置
+- **高效** - 快速操作，即开即用
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
-```
+## 隐私
+
+所有数据处理均在浏览器本地完成，不会上传到任何服务器。

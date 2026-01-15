@@ -6,7 +6,9 @@ import { useCallback, useState, useRef } from 'react';
 import type { ParsedCsvResult } from '../core/types';
 import { parseFile } from '../core/parser';
 
-interface FileUploaderProps {
+// Compare mode props
+interface CompareModeProps {
+    mode: 'compare';
     fileA: ParsedCsvResult | null;
     fileB: ParsedCsvResult | null;
     onFileALoaded: (result: ParsedCsvResult) => void;
@@ -14,15 +16,25 @@ interface FileUploaderProps {
     onSwap: () => void;
 }
 
+// Merge mode props
+interface MergeModeProps {
+    mode: 'merge';
+    mergeFile?: ParsedCsvResult | null;
+    onMergeFileLoaded?: (result: ParsedCsvResult) => void;
+}
+
+type FileUploaderProps = CompareModeProps | MergeModeProps;
+
 interface UploadZoneProps {
     label: string;
     hint: string;
     result: ParsedCsvResult | null;
     source: 'A' | 'B';
     onFileLoaded: (result: ParsedCsvResult) => void;
+    className?: string;
 }
 
-function UploadZone({ label, hint, result, source, onFileLoaded }: UploadZoneProps) {
+function UploadZone({ label, hint, result, source, onFileLoaded, className = '' }: UploadZoneProps) {
     const [dragOver, setDragOver] = useState(false);
     const inputRef = useRef<HTMLInputElement>(null);
 
@@ -65,7 +77,7 @@ function UploadZone({ label, hint, result, source, onFileLoaded }: UploadZonePro
 
     return (
         <div
-            className={`upload-zone ${dragOver ? 'drag-over' : ''} ${hasFile ? 'has-file' : ''}`}
+            className={`upload-zone ${dragOver ? 'drag-over' : ''} ${hasFile ? 'has-file' : ''} ${className}`}
             onClick={handleClick}
             onDrop={handleDrop}
             onDragOver={handleDragOver}
@@ -80,14 +92,10 @@ function UploadZone({ label, hint, result, source, onFileLoaded }: UploadZonePro
             />
 
             {hasFile ? (
-                <div className="file-info">
-                    <span className="icon">✓</span>
-                    <span className="file-name">{result.format} 格式</span>
-                    <span className="file-stats">
-                        {result.entries.length} 条密码记录
-                        {result.errors.length > 0 && ` (${result.errors.length} 个警告)`}
-                    </span>
-                </div>
+                <>
+                    <span className="file-name">{result.format}</span>
+                    <span className="file-stats">{result.entries.length} 条记录</span>
+                </>
             ) : (
                 <>
                     <span className="icon">📁</span>
@@ -99,41 +107,54 @@ function UploadZone({ label, hint, result, source, onFileLoaded }: UploadZonePro
     );
 }
 
-export function FileUploader({
-    fileA,
-    fileB,
-    onFileALoaded,
-    onFileBLoaded,
-    onSwap
-}: FileUploaderProps) {
-    const canSwap = fileA !== null || fileB !== null;
+export function FileUploader(props: FileUploaderProps) {
+    if (props.mode === 'compare') {
+        const { fileA, fileB, onFileALoaded, onFileBLoaded, onSwap } = props;
+        const canSwap = fileA !== null || fileB !== null;
+
+        return (
+            <>
+                <UploadZone
+                    label="基准文档 (A)"
+                    hint="拖拽或点击上传"
+                    result={fileA}
+                    source="A"
+                    onFileLoaded={onFileALoaded}
+                />
+
+                <div className="upload-actions">
+                    <button
+                        className="swap-btn"
+                        onClick={onSwap}
+                        disabled={!canSwap}
+                        title="交换"
+                    >
+                        ⇄
+                    </button>
+                </div>
+
+                <UploadZone
+                    label="新文档 (B)"
+                    hint="拖拽或点击上传"
+                    result={fileB}
+                    source="B"
+                    onFileLoaded={onFileBLoaded}
+                />
+            </>
+        );
+    }
+
+    // Merge mode
+    const { mergeFile, onMergeFileLoaded } = props;
 
     return (
-        <div className="uploader-container">
-            <UploadZone
-                label="基准文档 (A)"
-                hint="拖拽或点击上传 Chrome/BitWarden CSV"
-                result={fileA}
-                source="A"
-                onFileLoaded={onFileALoaded}
-            />
-
-            <button
-                className="swap-button"
-                onClick={onSwap}
-                disabled={!canSwap}
-                title="交换文档"
-            >
-                🔁
-            </button>
-
-            <UploadZone
-                label="新文档 (B)"
-                hint="拖拽或点击上传 Chrome/BitWarden CSV"
-                result={fileB}
-                source="B"
-                onFileLoaded={onFileBLoaded}
-            />
-        </div>
+        <UploadZone
+            label="密码文档"
+            hint="拖拽或点击上传 CSV"
+            result={mergeFile || null}
+            source="A"
+            onFileLoaded={onMergeFileLoaded || (() => { })}
+            className="single"
+        />
     );
 }

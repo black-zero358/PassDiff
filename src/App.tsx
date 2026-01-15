@@ -1,5 +1,6 @@
 // ==========================================
 // PassDiff - Main Application
+// 简约、克制、高效
 // ==========================================
 
 import { useState, useCallback, useMemo } from 'react';
@@ -9,14 +10,18 @@ import type {
   ParsedCsvResult,
   DiffGroup,
   VirtualRowData,
-  AppSettings
+  AppSettings,
+  PasswordEntry
 } from './core/types';
 import { diffPasswords, flattenGroups, getDiffStats } from './core/diff';
 import { downloadCSV } from './core/exporter';
+import { findMergeCandidates, type MergeGroup } from './core/merge';
 
 import { FileUploader } from './components/FileUploader';
 import { VirtualDiffList } from './components/VirtualDiffList';
-import { SettingsPanel } from './components/SettingsPanel';
+import { MergeList } from './components/MergeList';
+
+type AppMode = 'COMPARE' | 'MERGE';
 
 // 默认设置
 const defaultSettings: AppSettings = {
@@ -26,9 +31,13 @@ const defaultSettings: AppSettings = {
 };
 
 function App() {
+  // 应用模式
+  const [mode, setMode] = useState<AppMode>('COMPARE');
+
   // 文件状态
   const [fileA, setFileA] = useState<ParsedCsvResult | null>(null);
   const [fileB, setFileB] = useState<ParsedCsvResult | null>(null);
+  const [mergeFile, setMergeFile] = useState<ParsedCsvResult | null>(null);
 
   // 设置状态
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
@@ -36,21 +45,25 @@ function App() {
   // 展开的分组
   const [expandedDomains, setExpandedDomains] = useState<Set<string>>(new Set());
 
-  // 计算对比结果
+  // 对比模式: 计算对比结果
   const diffGroups: DiffGroup[] = useMemo(() => {
-    if (!fileA || !fileB) return [];
+    if (mode !== 'COMPARE' || !fileA || !fileB) return [];
     return diffPasswords(fileA.entries, fileB.entries);
-  }, [fileA, fileB]);
+  }, [mode, fileA, fileB]);
 
-  // 计算统计数据
-  const stats = useMemo(() => {
-    return getDiffStats(diffGroups);
-  }, [diffGroups]);
+  // 对比模式: 统计数据
+  const stats = useMemo(() => getDiffStats(diffGroups), [diffGroups]);
 
-  // 生成虚拟列表数据
+  // 对比模式: 虚拟列表数据
   const virtualRows: VirtualRowData[] = useMemo(() => {
     return flattenGroups(diffGroups, expandedDomains, settings.showSameEntries);
   }, [diffGroups, expandedDomains, settings.showSameEntries]);
+
+  // 合并模式: 查找可合并项
+  const mergeGroups: MergeGroup[] = useMemo(() => {
+    if (mode !== 'MERGE' || !mergeFile) return [];
+    return findMergeCandidates(mergeFile.entries);
+  }, [mode, mergeFile]);
 
   // 默认展开所有非相同的分组
   useMemo(() => {
@@ -84,109 +97,182 @@ function App() {
 
   // 导出合并结果
   const handleExport = useCallback(() => {
-    if (!fileA && !fileB) return;
+    if (mode === 'COMPARE') {
+      if (!fileA && !fileB) return;
+      const mergedEntries = new Map<string, PasswordEntry>();
+      fileA?.entries.forEach(entry => {
+        const key = `${entry.domain}::${entry.username}`;
+        mergedEntries.set(key, entry);
+      });
+      fileB?.entries.forEach(entry => {
+        const key = `${entry.domain}::${entry.username}`;
+        mergedEntries.set(key, entry);
+      });
+      downloadCSV(Array.from(mergedEntries.values()), 'merged_passwords.csv');
+    }
+  }, [mode, fileA, fileB]);
 
-    // 简单导出：合并两边的条目，优先使用 B 的密码
-    const mergedEntries = new Map();
-
-    fileA?.entries.forEach(entry => {
-      const key = `${entry.domain}::${entry.username}`;
-      mergedEntries.set(key, entry);
-    });
-
-    fileB?.entries.forEach(entry => {
-      const key = `${entry.domain}::${entry.username}`;
-      mergedEntries.set(key, entry);
-    });
-
-    downloadCSV(Array.from(mergedEntries.values()), 'merged_passwords.csv');
-  }, [fileA, fileB]);
-
-  // 全部展开
+  // 全部展开/折叠
   const handleExpandAll = useCallback(() => {
     const allDomains = diffGroups.map(g => g.domain);
     setExpandedDomains(new Set(allDomains));
   }, [diffGroups]);
 
-  // 全部折叠
   const handleCollapseAll = useCallback(() => {
     setExpandedDomains(new Set());
   }, []);
 
-  const hasData = fileA !== null && fileB !== null;
-  const hasDiff = stats.total > 0;
+  // 切换隐私模式
+  const handlePrivacyChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    setSettings(s => ({ ...s, privacyMode: e.target.value as AppSettings['privacyMode'] }));
+  }, []);
+
+  const hasCompareData = fileA !== null && fileB !== null;
+  const hasMergeData = mergeFile !== null && mergeGroups.length > 0;
 
   return (
-    <div className="app-container">
+    <div className="app">
       {/* Header */}
-      <header className="app-header">
-        <div className="app-title">
-          <h1>🔐 PassDiff</h1>
-          <span className="badge">本地对比</span>
-        </div>
-        <SettingsPanel settings={settings} onSettingsChange={setSettings} />
-      </header>
+      <header className="header">
+        <div className="header-left">
+          <div className="logo">🔐 PassDiff</div>
 
-      {/* File Uploader */}
-      <FileUploader
-        fileA={fileA}
-        fileB={fileB}
-        onFileALoaded={setFileA}
-        onFileBLoaded={setFileB}
-        onSwap={handleSwap}
-      />
-
-      {/* Stats Bar */}
-      {hasData && (
-        <div className="stats-bar">
-          <div className="stat-item">
-            <span className="stat-value">{stats.total}</span>
-            <span className="stat-label">总条目</span>
-          </div>
-          <div className="stat-item modified">
-            <span className="stat-value">{stats.modified}</span>
-            <span className="stat-label">已修改</span>
-          </div>
-          <div className="stat-item only-a">
-            <span className="stat-value">{stats.onlyA}</span>
-            <span className="stat-label">仅基准</span>
-          </div>
-          <div className="stat-item only-b">
-            <span className="stat-value">{stats.onlyB}</span>
-            <span className="stat-label">新增</span>
-          </div>
-          {stats.riskCount > 0 && (
-            <div className="stat-item risk">
-              <span className="stat-value">{stats.riskCount}</span>
-              <span className="stat-label">⚠️ 风险域名</span>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Actions Bar */}
-      {hasDiff && (
-        <div className="actions-bar">
-          <div className="left">
-            <button onClick={handleExpandAll}>展开全部</button>
-            <button onClick={handleCollapseAll}>折叠全部</button>
-          </div>
-          <div className="right">
-            <button className="primary" onClick={handleExport}>
-              导出合并结果
+          {/* Mode Tabs */}
+          <div className="mode-tabs">
+            <button
+              className={`mode-tab ${mode === 'COMPARE' ? 'active' : ''}`}
+              onClick={() => setMode('COMPARE')}
+            >
+              对比
+            </button>
+            <button
+              className={`mode-tab ${mode === 'MERGE' ? 'active' : ''}`}
+              onClick={() => setMode('MERGE')}
+            >
+              合并
             </button>
           </div>
         </div>
-      )}
 
-      {/* Diff List */}
-      <div className="diff-list-container">
-        <VirtualDiffList
-          rows={virtualRows}
-          privacyMode={settings.privacyMode}
-          onToggleGroup={handleToggleGroup}
-        />
-      </div>
+        <div className="header-right">
+          <div className="setting-group">
+            <label>隐私</label>
+            <select value={settings.privacyMode} onChange={handlePrivacyChange}>
+              <option value="SECURE">隐藏</option>
+              <option value="PEEK">预览</option>
+              <option value="PLAIN">明文</option>
+            </select>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <main className="main">
+        {/* Compare Mode */}
+        {mode === 'COMPARE' && (
+          <>
+            <div className="upload-section">
+              <FileUploader
+                mode="compare"
+                fileA={fileA}
+                fileB={fileB}
+                onFileALoaded={setFileA}
+                onFileBLoaded={setFileB}
+                onSwap={handleSwap}
+              />
+            </div>
+
+            {hasCompareData && (
+              <div className="stats-bar">
+                <div className="stat">
+                  <span className="stat-value">{stats.total}</span>
+                  <span className="stat-label">总计</span>
+                </div>
+                <div className="stat modified">
+                  <span className="stat-value">{stats.modified}</span>
+                  <span className="stat-label">修改</span>
+                </div>
+                <div className="stat only-a">
+                  <span className="stat-value">{stats.onlyA}</span>
+                  <span className="stat-label">仅A</span>
+                </div>
+                <div className="stat only-b">
+                  <span className="stat-value">{stats.onlyB}</span>
+                  <span className="stat-label">仅B</span>
+                </div>
+              </div>
+            )}
+
+            <div className="results">
+              {hasCompareData && (
+                <div className="results-toolbar">
+                  <div className="results-toolbar-left">
+                    <button onClick={handleExpandAll}>展开全部</button>
+                    <button onClick={handleCollapseAll}>折叠全部</button>
+                  </div>
+                  <div className="results-toolbar-right">
+                    <button className="primary" onClick={handleExport}>导出</button>
+                  </div>
+                </div>
+              )}
+
+              {hasCompareData ? (
+                <div className="results-list">
+                  <VirtualDiffList
+                    rows={virtualRows}
+                    privacyMode={settings.privacyMode}
+                    onToggleGroup={handleToggleGroup}
+                  />
+                </div>
+              ) : (
+                <div className="results-empty">
+                  <span className="icon">📋</span>
+                  <p>上传两个 CSV 文件开始对比</p>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* Merge Mode */}
+        {mode === 'MERGE' && (
+          <>
+            <div className="upload-section">
+              <FileUploader
+                mode="merge"
+                mergeFile={mergeFile}
+                onMergeFileLoaded={setMergeFile}
+              />
+            </div>
+
+            <div className="results">
+              {hasMergeData && (
+                <div className="results-toolbar">
+                  <div className="results-toolbar-left">
+                    <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>
+                      发现 {mergeGroups.length} 组可合并项
+                    </span>
+                  </div>
+                  <div className="results-toolbar-right">
+                    <button className="primary">应用合并</button>
+                  </div>
+                </div>
+              )}
+
+              {hasMergeData ? (
+                <div className="results-list">
+                  <MergeList groups={mergeGroups} privacyMode={settings.privacyMode} />
+                </div>
+              ) : (
+                <div className="results-empty">
+                  <span className="icon">🔄</span>
+                  <p>上传 CSV 文件进行去重优化</p>
+                </div>
+              )}
+            </div>
+          </>
+        )}
+      </main>
     </div>
   );
 }

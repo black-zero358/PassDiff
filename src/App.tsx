@@ -11,7 +11,8 @@ import type {
   DiffGroup,
   VirtualRowData,
   AppSettings,
-  PasswordEntry
+  PasswordEntry,
+  MergeStrategy
 } from './core/types';
 import { diffPasswords, flattenGroups, getDiffStats } from './core/diff';
 import { downloadCSV } from './core/exporter';
@@ -30,6 +31,11 @@ const defaultSettings: AppSettings = {
   showSameEntries: false
 };
 
+// 生成组的唯一 key
+function getGroupKey(group: MergeGroup): string {
+  return `${group.domain}::${group.username}`;
+}
+
 function App() {
   // 应用模式
   const [mode, setMode] = useState<AppMode>('COMPARE');
@@ -42,8 +48,13 @@ function App() {
   // 设置状态
   const [settings, setSettings] = useState<AppSettings>(defaultSettings);
 
-  // 展开的分组
+  // 对比模式: 展开的分组
   const [expandedDomains, setExpandedDomains] = useState<Set<string>>(new Set());
+
+  // 合并模式: 选中的组
+  const [selectedMergeGroups, setSelectedMergeGroups] = useState<Set<string>>(new Set());
+  // 合并模式: 手动选择的 URL
+  const [selectedUrls, setSelectedUrls] = useState<Map<string, string>>(new Map());
 
   // 对比模式: 计算对比结果
   const diffGroups: DiffGroup[] = useMemo(() => {
@@ -64,6 +75,14 @@ function App() {
     if (mode !== 'MERGE' || !mergeFile) return [];
     return findMergeCandidates(mergeFile.entries);
   }, [mode, mergeFile]);
+
+  // 合并模式: 文件加载时自动全选
+  useMemo(() => {
+    if (mergeGroups.length > 0 && selectedMergeGroups.size === 0) {
+      const allKeys = new Set(mergeGroups.map(g => getGroupKey(g)));
+      setSelectedMergeGroups(allKeys);
+    }
+  }, [mergeGroups]);
 
   // 默认展开所有非相同的分组
   useMemo(() => {
@@ -87,6 +106,38 @@ function App() {
       return next;
     });
   }, []);
+
+  // 合并模式: 切换组选择
+  const handleToggleMergeGroup = useCallback((groupKey: string) => {
+    setSelectedMergeGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(groupKey)) {
+        next.delete(groupKey);
+      } else {
+        next.add(groupKey);
+      }
+      return next;
+    });
+  }, []);
+
+  // 合并模式: 选择 URL
+  const handleSelectUrl = useCallback((groupKey: string, url: string) => {
+    setSelectedUrls(prev => {
+      const next = new Map(prev);
+      next.set(groupKey, url);
+      return next;
+    });
+  }, []);
+
+  // 合并模式: 全选/取消全选
+  const handleSelectAllMerge = useCallback(() => {
+    if (selectedMergeGroups.size === mergeGroups.length) {
+      setSelectedMergeGroups(new Set());
+    } else {
+      const allKeys = new Set(mergeGroups.map(g => getGroupKey(g)));
+      setSelectedMergeGroups(allKeys);
+    }
+  }, [mergeGroups, selectedMergeGroups]);
 
   // 交换文件
   const handleSwap = useCallback(() => {
@@ -112,6 +163,50 @@ function App() {
     }
   }, [mode, fileA, fileB]);
 
+  // 合并模式: 应用合并
+  const handleApplyMerge = useCallback(() => {
+    if (!mergeFile) return;
+
+    // 收集需要合并的组
+    const groupsToMerge = mergeGroups.filter(g => selectedMergeGroups.has(getGroupKey(g)));
+    const mergeKeys = new Set(groupsToMerge.map(g => `${g.domain}::${g.username}::${g.password}`));
+
+    // 构建新的条目列表
+    const newEntries: PasswordEntry[] = [];
+    const processed = new Set<string>();
+
+    mergeFile.entries.forEach(entry => {
+      const key = `${entry.domain}::${entry.username}::${entry.password}`;
+
+      if (mergeKeys.has(key)) {
+        // 这是需要合并的条目
+        if (!processed.has(key)) {
+          processed.add(key);
+
+          // 确定目标 URL
+          let targetUrl: string;
+          const groupKey = `${entry.domain}::${entry.username}`;
+
+          if (settings.mergeStrategy === 'ROOT_DOMAIN') {
+            targetUrl = `https://${entry.domain}/`;
+          } else if (settings.mergeStrategy === 'MANUAL') {
+            targetUrl = selectedUrls.get(groupKey) || entry.url;
+          } else {
+            targetUrl = entry.url;  // KEEP_FIRST
+          }
+
+          newEntries.push({ ...entry, url: targetUrl });
+        }
+        // 跳过重复条目
+      } else {
+        // 不需要合并，保留原样
+        newEntries.push(entry);
+      }
+    });
+
+    downloadCSV(newEntries, 'optimized_passwords.csv');
+  }, [mergeFile, mergeGroups, selectedMergeGroups, selectedUrls, settings.mergeStrategy]);
+
   // 全部展开/折叠
   const handleExpandAll = useCallback(() => {
     const allDomains = diffGroups.map(g => g.domain);
@@ -127,8 +222,14 @@ function App() {
     setSettings(s => ({ ...s, privacyMode: e.target.value as AppSettings['privacyMode'] }));
   }, []);
 
+  // 切换合并策略
+  const handleMergeStrategyChange = useCallback((e: React.ChangeEvent<HTMLSelectElement>) => {
+    setSettings(s => ({ ...s, mergeStrategy: e.target.value as MergeStrategy }));
+  }, []);
+
   const hasCompareData = fileA !== null && fileB !== null;
   const hasMergeData = mergeFile !== null && mergeGroups.length > 0;
+  const selectedCount = selectedMergeGroups.size;
 
   return (
     <div className="app">
@@ -155,6 +256,18 @@ function App() {
         </div>
 
         <div className="header-right">
+          {/* 合并模式下显示策略选项 */}
+          {mode === 'MERGE' && (
+            <div className="setting-group">
+              <label>策略</label>
+              <select value={settings.mergeStrategy} onChange={handleMergeStrategyChange}>
+                <option value="ROOT_DOMAIN">根域名</option>
+                <option value="KEEP_FIRST">保留第一个</option>
+                <option value="MANUAL">手动选择</option>
+              </select>
+            </div>
+          )}
+
           <div className="setting-group">
             <label>隐私</label>
             <select value={settings.privacyMode} onChange={handlePrivacyChange}>
@@ -249,19 +362,36 @@ function App() {
               {hasMergeData && (
                 <div className="results-toolbar">
                   <div className="results-toolbar-left">
+                    <button onClick={handleSelectAllMerge}>
+                      {selectedCount === mergeGroups.length ? '取消全选' : '全选'}
+                    </button>
                     <span style={{ fontSize: '12px', color: 'var(--color-text-secondary)' }}>
-                      发现 {mergeGroups.length} 组可合并项
+                      已选 {selectedCount} / {mergeGroups.length} 组
                     </span>
                   </div>
                   <div className="results-toolbar-right">
-                    <button className="primary">应用合并</button>
+                    <button
+                      className="primary"
+                      onClick={handleApplyMerge}
+                      disabled={selectedCount === 0}
+                    >
+                      应用合并并导出
+                    </button>
                   </div>
                 </div>
               )}
 
               {hasMergeData ? (
                 <div className="results-list">
-                  <MergeList groups={mergeGroups} privacyMode={settings.privacyMode} />
+                  <MergeList
+                    groups={mergeGroups}
+                    privacyMode={settings.privacyMode}
+                    mergeStrategy={settings.mergeStrategy}
+                    selectedGroups={selectedMergeGroups}
+                    selectedUrls={selectedUrls}
+                    onToggleGroup={handleToggleMergeGroup}
+                    onSelectUrl={handleSelectUrl}
+                  />
                 </div>
               ) : (
                 <div className="results-empty">

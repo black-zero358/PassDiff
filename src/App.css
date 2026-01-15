@@ -434,12 +434,29 @@
   border-bottom: 1px solid var(--color-border);
 }
 
+.merge-group.selected {
+  background: var(--color-modified-bg);
+}
+
 .merge-group-header {
   display: flex;
   align-items: center;
+  gap: var(--space-sm);
   padding: var(--space-sm) var(--space-md);
   background: var(--color-bg-tertiary);
   cursor: pointer;
+  transition: background var(--transition-fast);
+}
+
+.merge-group-header:hover {
+  background: var(--color-bg-hover);
+}
+
+.merge-checkbox {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--color-accent);
 }
 
 .merge-group-header .domain {
@@ -448,43 +465,92 @@
   font-size: 13px;
 }
 
+.merge-group-header .username {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .merge-group-header .count {
   font-size: 11px;
-  color: var(--color-text-secondary);
-  margin-right: var(--space-sm);
-}
-
-.merge-item {
-  display: grid;
-  grid-template-columns: 1fr 180px auto;
-  gap: var(--space-md);
-  padding: var(--space-sm) var(--space-md);
-  padding-left: calc(var(--space-md) + 20px);
-  border-bottom: 1px solid var(--color-border);
-  align-items: center;
-  font-size: 13px;
+  color: var(--color-modified);
+  padding: 2px 6px;
   background: var(--color-modified-bg);
+  border-radius: var(--radius-sm);
 }
 
-.merge-item .urls {
+.merge-group-header .risk-icon {
+  color: var(--color-risk);
+  font-size: 12px;
+}
+
+/* Merge Details Panel */
+.merge-details {
+  padding: var(--space-sm) var(--space-md);
+  padding-left: calc(var(--space-md) + 28px);
+  background: var(--color-bg-secondary);
+  border-top: 1px solid var(--color-border);
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--space-sm);
 }
 
-.merge-item .url {
+.merge-urls {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.merge-urls-label {
+  font-size: 11px;
+  color: var(--color-text-muted);
+  margin-bottom: 2px;
+}
+
+.merge-url-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.merge-radio {
+  width: 14px;
+  height: 14px;
+  cursor: pointer;
+  accent-color: var(--color-accent);
+}
+
+.merge-url-item .url {
   font-size: 11px;
   color: var(--color-text-secondary);
   font-family: var(--font-mono);
 }
 
-.merge-item .username {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--color-text-secondary);
+.merge-target {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding-top: var(--space-xs);
+  border-top: 1px dashed var(--color-border);
 }
 
-.merge-item .action {
+.merge-target-label {
+  font-size: 11px;
+  color: var(--color-text-muted);
+}
+
+.merge-target-url {
   font-size: 12px;
-  color: var(--color-modified);
+  font-family: var(--font-mono);
+  color: var(--color-only-b);
+}
+
+.merge-password {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
 }
